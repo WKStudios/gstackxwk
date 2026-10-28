@@ -241,12 +241,14 @@ export class AgentRunner {
       if (repairs.length) append(...repairs);
     }
 
-    const context = turnContext(s, {
-      conversationId: req.conversationId,
-      channel: req.channelLabel,
-      query: queryText(req.input),
-      runKind: req.kind,
-    });
+    const contextFor = () =>
+      turnContext(s, {
+        conversationId: req.conversationId,
+        channel: req.channelLabel,
+        query: queryText(req.input),
+        runKind: req.kind,
+      });
+    const context = contextFor();
     const userContent: Anthropic.Beta.Messages.BetaContentBlockParam[] =
       typeof req.input === 'string' ? [{ type: 'text', text: req.input }] : req.input;
 
@@ -306,6 +308,12 @@ export class AgentRunner {
         if (signal.aborted) {
           aborted = true;
           break;
+        }
+        // A tool_result message clears the turn's context note, so the model
+        // would lose track of the time mid-task. Re-attach a fresh copy after
+        // every round; cleared copies cost nothing.
+        if (supportsSystemMessages(s.config.model)) {
+          append({ role: 'system', content: contextFor(), clear_at: 'next_user_message' });
         }
       }
     } catch (err) {

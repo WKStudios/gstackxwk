@@ -3,6 +3,7 @@
  *   "0 18 * * 5"          cron (5 fields) in the owner's timezone
  *   "2026-10-30T09:00"    one-off, local time (an explicit offset also works)
  *   "every:30"            every N minutes (watchers)
+ *   "in:20"               one-off, N minutes from now (resolved to a local datetime when saved)
  */
 
 import { Cron } from 'croner';
@@ -28,6 +29,30 @@ export function nextRunFor(schedule: string, timezone: string, from: Date): Date
       `Couldn't read schedule "${schedule}". Use a 5-field cron like "0 18 * * 5", a local datetime like "2026-10-30T09:00", or "every:30".`,
     );
   }
+}
+
+/** Turn "in:N" into a one-off local datetime; anything else passes through. */
+export function resolveRelative(schedule: string, timezone: string, now: Date): string {
+  const m = schedule.trim().match(/^in:(\d+)$/);
+  if (!m) return schedule;
+  const minutes = parseInt(m[1], 10);
+  if (minutes < 1) throw new ScheduleError('Use at least "in:1"');
+  const at = new Date(now.getTime() + minutes * 60_000);
+  const parts = Object.fromEntries(
+    new Intl.DateTimeFormat('en-CA', {
+      timeZone: timezone,
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+      hour: '2-digit',
+      minute: '2-digit',
+      second: '2-digit',
+      hourCycle: 'h23',
+    })
+      .formatToParts(at)
+      .map(p => [p.type, p.value]),
+  );
+  return `${parts.year}-${parts.month}-${parts.day}T${parts.hour}:${parts.minute}:${parts.second}`;
 }
 
 export function isOneOff(schedule: string): boolean {

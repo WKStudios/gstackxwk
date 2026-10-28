@@ -3,7 +3,7 @@
 import { z } from 'zod';
 import { defineTool, ToolError, type ToolDef } from './types';
 import { clock, formatLocal } from '../clock';
-import { previewRuns, ScheduleError, validateSchedule } from '../schedule';
+import { previewRuns, resolveRelative, ScheduleError, validateSchedule } from '../schedule';
 import type { JobRow } from '../store';
 import { truncate } from '../format';
 
@@ -37,24 +37,31 @@ export const automationTools: ToolDef[] = [
   defineTool({
     name: 'schedule_task',
     description:
-      'Schedule work to run later or on repeat: "every Friday at 6pm send my weekly review", "remind me tomorrow at 9", "every weekday 7:30 daily brief". The prompt runs as a fresh background task with all your tools, and its final answer is sent to the owner. Times are in the owner\'s timezone. After creating, confirm the schedule in plain words using the preview.',
+      'Schedule work to run later or on repeat: "every Friday at 6pm send my weekly review", "remind me tomorrow at 9", "remind me in 20 minutes" (schedule "in:20"), "every weekday 7:30 daily brief". The prompt runs as a fresh background task with all your tools, and its final answer is sent to the owner. Times are in the owner\'s timezone. After creating, confirm the schedule in plain words using the preview.',
     input: z.object({
       name: z.string().describe('Short unique name, e.g. "Daily brief"'),
       schedule: z
         .string()
-        .describe('5-field cron ("30 7 * * 1-5"), or a one-off local datetime "2026-10-30T09:00", or "every:<minutes>"'),
+        .describe('5-field cron ("30 7 * * 1-5"), a one-off local datetime "2026-10-30T09:00", "in:<minutes>" for "in 20 minutes" reminders, or "every:<minutes>"'),
       prompt: z.string().describe('Complete standalone instructions for the future run (it will not see this conversation)'),
       mode: MODE.optional(),
     }),
     run: async (input, ctx) => {
       const { store, config } = ctx.services;
       if (store.findJob(ctx.conversationId, input.name)) throw new ToolError(`A task named "${input.name}" already exists; use update_task.`);
-      const next = checkSchedule(input.schedule, config.timezone);
+      let schedule: string;
+      try {
+        schedule = resolveRelative(input.schedule, config.timezone, clock.now());
+      } catch (err) {
+        if (err instanceof ScheduleError) throw new ToolError(err.message);
+        throw err;
+      }
+      const next = checkSchedule(schedule, config.timezone);
       const job = store.createJob({
         conversation_id: ctx.conversationId,
         name: input.name,
         kind: 'prompt',
-        schedule: input.schedule,
+        schedule,
         timezone: config.timezone,
         prompt: input.prompt,
         mode: input.mode ?? 'always',
@@ -62,7 +69,7 @@ export const automationTools: ToolDef[] = [
         status: 'active',
         next_run_at: next.toISOString(),
       });
-      return `Scheduled "${job.name}" [${job.id}]. Runs: ${previewRuns(input.schedule, config.timezone, clock.now())}.`;
+      return `Scheduled "${job.name}" [${job.id}]. Runs: ${previewRuns(schedule, config.timezone, clock.now())}.`;
     },
   }),
   defineTool({

@@ -112,6 +112,16 @@ describe('files and scheduling tools', () => {
     await expect(t.call('schedule_task', { name: 'weekly review', schedule: '0 9 * * *', prompt: 'x' })).rejects.toThrow('already exists');
     await expect(t.call('schedule_task', { name: 'x', schedule: 'every friday', prompt: 'x' })).rejects.toThrow("Couldn't read schedule");
     expect(await t.call('update_task', { ref: 'Weekly review', status: 'paused' })).toBe('Updated "Weekly review": paused.');
+
+    const before = Date.now();
+    const reminder = (await t.call('schedule_task', { name: 'Water', schedule: 'in:2', prompt: 'Remind them to drink water' })) as string;
+    const job = t.s.store.findJob('owner', 'Water')!;
+    expect(job.schedule).toMatch(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}$/);
+    const due = new Date(job.next_run_at!).getTime();
+    expect(due - before).toBeGreaterThanOrEqual(119_000);
+    expect(due - before).toBeLessThan(122_000);
+    expect(reminder).not.toContain('then');
+    await expect(t.call('schedule_task', { name: 'Now', schedule: 'in:0', prompt: 'x' })).rejects.toThrow('in:1');
     expect(await t.call('list_tasks', {})).toContain('Weekly review');
   });
 });

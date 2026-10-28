@@ -57,6 +57,11 @@ describe('chat turns', () => {
 
     const results = lastUser(claude.calls[1]).content;
     expect(results.map((r: any) => r.tool_use_id)).toEqual(['t1', 't2']);
+    // Tool results clear the turn's context note, so a fresh copy follows them.
+    const tail = claude.calls[1].messages.at(-1);
+    expect(tail.role).toBe('system');
+    expect(tail.clear_at).toBe('next_user_message');
+    expect(tail.content).toContain('Now: ');
     expect(results[0].content).toContain('Saved memory');
     expect(s.store.recall(['owner'], 'Jai')[0].content).toBe('CFO at Acme');
     expect(wa.texts()).toEqual(['Noted — Jai is the CFO.']);
