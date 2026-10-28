@@ -1,5 +1,20 @@
 # Changelog
 
+## 0.4.0 — 2026-10-28
+
+### Superagent: a personal agent on WhatsApp
+
+- `superagent/` — message it on WhatsApp (official Cloud API), in a web chat, or in the terminal; one brain and one memory across all three
+- Claude Opus 5.5 agent loop with adaptive thinking, prompt caching, server-side refusal fallback and on-demand compaction for long threads
+- Approval gates enforced in code with WhatsApp buttons: sending email, invites, changing or cancelling meetings with guests, RSVPs, browser submits, phone calls. Any other reply counts as "no, do this instead"
+- Gmail (search, read, attachments, drafts, send, labels), Google Calendar (all calendars, conflicts, timezone traps), Google Drive, Notion (search, read, write, databases, The Hub capture)
+- Real browser via gstack browse, with a secrets vault (`{{secret:name}}`) the model never sees
+- Schedules in your timezone, page watchers and Gmail triggers that only call Claude when something changed, multi-day missions, up to 12 parallel sub-agents, background research
+- Code sandbox, PDF generation, expiring download links, image generation, voice notes in and out
+- Quiet hours, WhatsApp 24h-window handling with template nudges and an outbox, daily spend cap, audit log, instant `/commands` and a `stop` kill switch
+- Built-in playbooks: daily brief, inbox triage, reply in your voice, calendar scan, meeting prep, The Hub, deep research, automation debugging
+- `bun run test` now runs browse and superagent tests in separate processes
+
 ## 0.3.1 — 2026-03-12
 
 ### Phase 3.5: Browser cookie import
