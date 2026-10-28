@@ -1,4 +1,5 @@
 import { describe, expect, test } from 'bun:test';
+import Anthropic from '@anthropic-ai/sdk';
 import * as fs from 'fs';
 import * as path from 'path';
 import { z } from 'zod';
@@ -111,6 +112,22 @@ describe('chat turns', () => {
     await idle(app);
     expect(s.store.listMemories(['owner'])).toEqual([]);
     expect(lastUser(claude.calls[1]).content[0]).toMatchObject({ tool_use_id: 'cut', is_error: true });
+  });
+
+  test('an empty API balance gets a plain-English reply', async () => {
+    const { app, wa } = makeApp({
+      claude: new FakeClaude(() => {
+        throw new Anthropic.BadRequestError(
+          400,
+          { type: 'error', error: { type: 'invalid_request_error', message: 'Your credit balance is too low to access the Anthropic API.' } },
+          'Your credit balance is too low to access the Anthropic API.',
+          new Headers(),
+        );
+      }),
+    });
+    await app.router.handleInbound(inbound({ text: 'hey' }));
+    await idle(app);
+    expect(wa.texts()[0]).toBe('Your Anthropic account is out of API credits. Add some at console.anthropic.com → Settings → Billing, then send your message again.');
   });
 
   test('errors become a friendly reply', async () => {

@@ -40,6 +40,9 @@ export function friendlyError(err: unknown): string {
   if (err instanceof Anthropic.AuthenticationError) return 'My Claude API key was rejected — check ANTHROPIC_API_KEY on the server.';
   if (err instanceof Anthropic.InternalServerError) return 'Claude is having trouble right now (server error). Try again shortly.';
   if (err instanceof Anthropic.APIError && err.status === 529) return 'Claude is overloaded right now. Try again in a minute.';
+  if (err instanceof Anthropic.BadRequestError && /credit balance/i.test(errorMessage(err))) {
+    return 'Your Anthropic account is out of API credits. Add some at console.anthropic.com → Settings → Billing, then send your message again.';
+  }
   if (err instanceof Anthropic.BadRequestError) return `The request to Claude was rejected: ${errorMessage(err).slice(0, 300)}`;
   return `Something went wrong on my side: ${errorMessage(err).slice(0, 300)}`;
 }
