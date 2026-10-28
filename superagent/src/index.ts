@@ -40,7 +40,12 @@ async function check() {
     }
     line(!!config.whatsapp.templateName, 'WhatsApp re-engagement template', config.whatsapp.templateName ?? 'not set — proactive messages wait until you write after 24h of silence');
   } else line(null, 'WhatsApp', 'not configured (web chat and console still work)');
-  line(config.publicBaseUrl.startsWith('https://'), 'PUBLIC_BASE_URL', config.publicBaseUrl);
+  const local = /^http:\/\/(localhost|127\.0\.0\.1)\b/.test(config.publicBaseUrl);
+  line(
+    local ? null : config.publicBaseUrl.startsWith('https://'),
+    'PUBLIC_BASE_URL',
+    local ? `${config.publicBaseUrl} (fine for testing on this computer; WhatsApp needs a public https URL)` : config.publicBaseUrl,
+  );
   line(!!config.adminToken, 'Web chat', config.adminToken ? `${config.publicBaseUrl}/chat?token=…` : 'set ADMIN_TOKEN to enable');
   if (s.google) line(s.google.isConnected(), 'Google', s.google.isConnected() ? s.google.connectedEmail() ?? 'connected' : 'configured; send /connect google');
   else line(null, 'Google', 'not configured');

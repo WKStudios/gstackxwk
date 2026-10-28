@@ -190,7 +190,10 @@ export class Commands {
         if (ownerOnly()) return ownerOnly();
         if (word !== 'google') return 'Usage: /connect google';
         if (!s.google) return 'Google isn\'t configured on the server. Set GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET (see superagent/README.md).';
-        if (!/^https:\/\//.test(config.publicBaseUrl)) return 'PUBLIC_BASE_URL must be an https URL Google can redirect back to.';
+        // Google accepts plain http only for localhost, which is enough to test on your own computer.
+        if (!/^(https:\/\/|http:\/\/(localhost|127\.0\.0\.1)(:\d+)?(\/|$))/.test(config.publicBaseUrl)) {
+          return 'PUBLIC_BASE_URL must be an https URL (or http://localhost while testing) that Google can redirect back to.';
+        }
         return `Tap to connect Gmail, Calendar and Drive (link valid 30 minutes):\n${s.google.authUrl()}`;
       }
 

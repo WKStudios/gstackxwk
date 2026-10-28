@@ -334,3 +334,22 @@ describe('background approvals', () => {
     expect(s.store.get('automations_paused')).toBeNull();
   });
 });
+
+describe('/connect google', () => {
+  test('works on https and on localhost for testing, refuses other plain-http URLs', async () => {
+    const google = { GOOGLE_CLIENT_ID: 'id', GOOGLE_CLIENT_SECRET: 'sec' };
+    for (const [url, ok] of [
+      ['https://agent.example.com', true],
+      ['http://localhost:8787', true],
+      ['http://127.0.0.1:8787', true],
+      ['http://agent.example.com', false],
+      ['http://localhost.evil.com', false],
+    ] as const) {
+      const { app, wa } = makeApp({ env: { ...google, PUBLIC_BASE_URL: url } });
+      await app.router.handleInbound(inbound({ text: '/connect google' }));
+      const reply = wa.texts().at(-1)!;
+      if (ok) expect(reply).toContain('https://accounts.google.com/o/oauth2/v2/auth?');
+      else expect(reply).toContain('PUBLIC_BASE_URL must be an https URL');
+    }
+  });
+});
