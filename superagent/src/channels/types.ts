@@ -1,4 +1,4 @@
-export type ChannelName = 'whatsapp' | 'web' | 'console';
+export type ChannelName = 'whatsapp' | 'discord' | 'web' | 'console';
 
 export type InboundType =
   | 'text'

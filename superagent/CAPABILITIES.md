@@ -109,10 +109,10 @@ The Base44 super agent list, item by item, and what this agent does for each.
 
 | # | Capability | | How |
 |---|---|---|---|
-| 52 | WhatsApp or web chat | ✅ | official WhatsApp Cloud API, a web chat page, and a terminal mode |
+| 52 | WhatsApp or web chat | ✅ | official WhatsApp Cloud API, a Discord bot (DMs, no verification needed), a web chat page, and a terminal mode |
 | 53 | Voice notes back | 🔌 | `/voice on`, or `mirror` (voice back when you send voice) |
 | 54 | WhatsApp groups for a team | ⛔ | the official API's group support is limited. Instead, teammates in `MEMBER_PHONES` each get a private thread with their own memory, plus team memories you mark as shared; none of your email, calendar, Drive, Notion or vault |
-| 55 | Same brain wherever you reach it | ✅ | WhatsApp and web chat share one thread, one memory and one set of automations |
+| 55 | Same brain wherever you reach it | ✅ | WhatsApp, Discord and web chat share one thread, one memory and one set of automations |
 
 ## 12. Memory
 

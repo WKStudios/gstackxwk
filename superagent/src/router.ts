@@ -19,6 +19,7 @@ import { filesRoot, saveFile } from './tools/files';
 import { logger, errorMessage } from './log';
 import { clock, localDate } from './clock';
 import type { Commands } from './commands';
+import { discordOwner } from './channels/discord';
 
 const log = logger('router');
 
@@ -64,8 +65,9 @@ export class Router {
   }
 
   identify(msg: InboundMessage): { conversationId: string; role: Role } | null {
-    const { config } = this.services();
+    const { config, store } = this.services();
     if (msg.channel === 'web' || msg.channel === 'console') return { conversationId: 'owner', role: 'owner' };
+    if (msg.channel === 'discord') return msg.from === discordOwner(store, config) ? { conversationId: 'owner', role: 'owner' } : null;
     if (config.owners.includes(msg.from)) return { conversationId: 'owner', role: 'owner' };
     if (config.members.includes(msg.from)) return { conversationId: `member:${msg.from}`, role: 'member' };
     return null;
@@ -258,7 +260,7 @@ export class Router {
         persist: true,
         signal,
         replyTarget: target,
-        channelLabel: target.channel === 'whatsapp' ? 'WhatsApp' : target.channel === 'web' ? 'web chat' : 'terminal',
+        channelLabel: { whatsapp: 'WhatsApp', discord: 'Discord', web: 'web chat', console: 'terminal' }[target.channel],
       });
       if (result.aborted) return;
       if (!result.text) {

@@ -77,6 +77,8 @@ and Caddy for https: `agent.example.com { reverse_proxy localhost:8787 }`.
 
 ### 2. Connect WhatsApp (Meta Cloud API — official, no ban risk)
 
+Meta now asks for **business verification** (Business settings → Security Center) before even the test number can send or receive, and it can take a couple of days. Discord (below) works in minutes while you wait.
+
 1. Create an app at developers.facebook.com → **Business** type → add the **WhatsApp** product.
 2. **Phone number**: use the test number to start, or add a real number that isn't on a personal WhatsApp account. Copy the **Phone number ID** → `WHATSAPP_PHONE_NUMBER_ID`.
 3. **Token**: Business Settings → Users → System users → add an admin system user → *Generate token* for your app with `whatsapp_business_messaging` and `whatsapp_business_management` → `WHATSAPP_TOKEN` (this one doesn't expire, unlike the 24h token on the getting-started page).
@@ -85,7 +87,20 @@ and Caddy for https: `agent.example.com { reverse_proxy localhost:8787 }`.
 6. **Allowlist**: put your own number in `OWNER_PHONES`. Messages from any other number are ignored.
 7. **Re-engagement template** (recommended): WhatsApp only lets a business send free-form messages within 24 hours of your last message. For your 7:30 brief after a quiet day, create a *Utility* template, e.g. name `agent_update`, body `You have an update from your agent: {{1}}`. Once it's approved, set `WHATSAPP_TEMPLATE_NAME`. The agent sends the template as a nudge and delivers the full message the moment you reply. Without a template, proactive messages wait until you next write.
 
+8. **Publish the app** (left menu → Publish). Unpublished apps only receive Meta's dashboard test webhooks, not real messages. Publishing needs a privacy policy URL under App settings → Basic.
+
 Save the number in your phone as your agent and say hi.
+
+### Or: Discord (no verification, no public URL)
+
+The agent keeps an outbound connection to Discord, so this works from your own computer with no tunnel, and there's no 24-hour messaging window.
+
+1. discord.com/developers/applications → **New Application** → name it → **Bot** → **Reset Token** → copy it to `DISCORD_BOT_TOKEN`. (Optionally turn off **Public Bot** so nobody else can add it anywhere.)
+2. Start the agent. The log prints an invite link and a 6-digit pairing code.
+3. Open the invite link and add the bot to a server you own. Discord only lets you DM a bot you share a server with; in the app, **+ → Create My Own** makes a private one.
+4. In that server, click the bot → **Message**, and send the pairing code. That links your Discord account; anyone else is ignored. (Or set `DISCORD_OWNER_ID` to your user id and skip pairing.)
+
+Set `PRIMARY_CHANNEL=discord` to get reminders and briefs there even when WhatsApp is also connected. Approvals arrive as Approve/Deny buttons, and voice notes and files work both ways.
 
 ### 3. Connect your accounts (each optional)
 
@@ -182,6 +197,8 @@ superagent/
 |---|---|
 | Webhook verification fails | `WHATSAPP_VERIFY_TOKEN` must match what you typed in Meta; the URL must be reachable over https. |
 | Nothing happens when you message it | Check the server log for "ignoring message from unknown sender" — fix `OWNER_PHONES` (digits with country code). With Meta's test number, your phone must also be in the test recipients list. |
+| WhatsApp says "Account restricted" | Meta wants business verification first: Business settings → Business info, then Security Center → Start verification. |
+| Discord bot doesn't answer | Check the log: "rejected the bot token" means reset `DISCORD_BOT_TOKEN`; "no one is linked yet" means send the pairing code it prints. You can only DM the bot after adding it to a server you're in. |
 | Error 131047 (re-engagement) | More than 24h since you last wrote: set up the template (step 7) or just message it first. |
 | Google keeps disconnecting weekly | Publish the OAuth consent screen (*In production*). |
 | "Nothing found" in Notion | Share the page/database with the integration (••• → Connections). |

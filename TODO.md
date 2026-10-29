@@ -101,6 +101,8 @@
 ## Phase 7: Superagent (v0.4.0)
   - [x] WhatsApp Cloud API channel (signed webhooks, media, buttons, voice notes, templates)
   - [x] Web chat + terminal channels sharing one conversation and memory
+  - [x] Discord bot channel (gateway DMs, pairing code, approval buttons)
+  - [x] Several Google accounts at once
   - [x] Manual Claude agent loop: streaming, approvals, stop, pause_turn, refusals, compaction
   - [x] Approval gates enforced in code (email, invites, others' meetings, submits, calls)
   - [x] Memory (typed, pinned, full-text recall) + searchable transcript

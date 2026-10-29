@@ -46,6 +46,14 @@ async function check() {
     'PUBLIC_BASE_URL',
     local ? `${config.publicBaseUrl} (fine for testing on this computer; WhatsApp needs a public https URL)` : config.publicBaseUrl,
   );
+  if (app.discord) {
+    try {
+      const me = await app.discord.whoami();
+      line(true, 'Discord bot', `${me.username}; ${app.discord.owner() ? 'linked to you' : 'not linked yet: start the agent and DM the bot the pairing code it prints'}`);
+    } catch (err) {
+      line(false, 'Discord bot', errorMessage(err));
+    }
+  } else line(null, 'Discord', 'not configured');
   line(!!config.adminToken, 'Web chat', config.adminToken ? `${config.publicBaseUrl}/chat?token=…` : 'set ADMIN_TOKEN to enable');
   if (s.google?.isConnected()) {
     for (const g of s.google.all()) {
@@ -84,7 +92,7 @@ async function check() {
 }
 
 async function consoleMode() {
-  const config = loadConfig({ ...process.env, WHATSAPP_TOKEN: '', WHATSAPP_PHONE_NUMBER_ID: '' });
+  const config = loadConfig({ ...process.env, WHATSAPP_TOKEN: '', WHATSAPP_PHONE_NUMBER_ID: '', DISCORD_BOT_TOKEN: '' });
   const channel = new ConsoleChannel();
   const app = createApp(config, { channels: [channel], onlyGivenChannels: true });
   app.scheduler.start();
@@ -115,14 +123,26 @@ async function serve() {
   log.info(`${config.agentName} listening on :${server.port} (${config.model}, ${config.timezone})`);
   if (config.whatsapp) log.info(`WhatsApp webhook: ${config.publicBaseUrl}/webhook/whatsapp`);
   if (config.adminToken) log.info(`Web chat: ${config.publicBaseUrl}/chat?token=<ADMIN_TOKEN>`);
-  if (!config.whatsapp && !config.adminToken) {
-    log.warn('Neither WhatsApp nor ADMIN_TOKEN (web chat) is configured, so nothing can reach the agent. Try `bun run superagent:console`.');
+  if (app.discord) {
+    const discord = app.discord;
+    discord.connect(msg => void app.router.handleInbound(msg).catch(err => log.error('discord inbound failed', err)));
+    const code = discord.pairingCode();
+    if (code) {
+      const invite = discord.inviteUrl();
+      log.warn(
+        `Discord isn't linked to you yet.${invite ? `\n  1. Add the bot to a server you own (Discord only allows DMs with a bot you share a server with):\n     ${invite}` : ''}\n  ${invite ? '2' : '1'}. DM the bot this pairing code: ${code}`,
+      );
+    }
+  }
+  if (!config.whatsapp && !config.discord && !config.adminToken) {
+    log.warn('None of WhatsApp, Discord or ADMIN_TOKEN (web chat) is configured, so nothing can reach the agent. Try `bun run superagent:console`.');
   }
   log.info(
-    `Integrations: google=${caps.google} notion=${caps.notion} voiceIn=${caps.voiceIn} voiceOut=${caps.voiceOut} images=${caps.images} calls=${caps.phoneCalls}${caps.mcp.length ? ` mcp=${caps.mcp.join(',')}` : ''}`,
+    `Integrations: discord=${caps.discord} google=${caps.google} notion=${caps.notion} voiceIn=${caps.voiceIn} voiceOut=${caps.voiceOut} images=${caps.images} calls=${caps.phoneCalls}${caps.mcp.length ? ` mcp=${caps.mcp.join(',')}` : ''}`,
   );
   const shutdown = () => {
     log.info('shutting down');
+    app.discord?.stop();
     app.scheduler.stop();
     server.stop();
     app.services.store.close();

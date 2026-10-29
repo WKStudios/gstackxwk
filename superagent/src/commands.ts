@@ -14,6 +14,7 @@ import { listBackground, stopBackground } from './background';
 import { vaultNames } from './tools/browser';
 import { truncate } from './format';
 import { validateSchedule } from './schedule';
+import { discordOwner } from './channels/discord';
 
 export interface CommandInput {
   conversationId: string;
@@ -136,7 +137,7 @@ export class Commands {
         const bg = listBackground(conversationId);
         return [
           `*${config.agentName}* · ${config.model} · ${config.timezone}`,
-          `WhatsApp: ${caps.whatsapp ? 'on' : 'off'} · Google: ${google} · Notion: ${caps.notion ? 'on' : 'off'}`,
+          `WhatsApp: ${caps.whatsapp ? 'on' : 'off'} · Discord: ${caps.discord ? (discordOwner(store, config) ? 'on' : 'waiting for the pairing code') : 'off'} · Google: ${google} · Notion: ${caps.notion ? 'on' : 'off'}`,
           `Voice in/out: ${caps.voiceIn ? 'on' : 'off'}/${caps.voiceOut ? 'on' : 'off'} · Images: ${caps.images ? 'on' : 'off'} · Calls: ${caps.phoneCalls ? 'on' : 'off'}`,
           caps.mcp.length ? `MCP: ${caps.mcp.join(', ')}` : '',
           `Automations: ${store.listJobs(conversationId).length} task(s), ${store.listMissions(conversationId).length} mission(s)${store.get('automations_paused') ? ' — ⏸️ paused' : ''}`,

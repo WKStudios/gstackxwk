@@ -45,6 +45,10 @@ export interface Config {
     templateName?: string;
     templateLanguage: string;
   };
+  /** A Discord bot the owner DMs. ownerId pins the owner; otherwise they link with a pairing code. */
+  discord?: { token: string; ownerId?: string };
+  /** Where proactive messages go when the owner hasn't written recently (default: WhatsApp, then Discord, then web). */
+  primaryChannel?: 'whatsapp' | 'discord' | 'web';
   google?: { clientId: string; clientSecret: string };
   notion?: { token: string; hubDatabaseId?: string; version: string };
   stt?: OpenAICompatibleProvider;
@@ -160,6 +164,13 @@ export function loadConfig(env: Env = process.env): Config {
     };
   }
 
+  const discordOwner = (env.DISCORD_OWNER_ID || '').trim();
+  if (discordOwner && !/^\d{5,25}$/.test(discordOwner)) throw new ConfigError('DISCORD_OWNER_ID must be a numeric Discord user id');
+  const primaryChannel = (env.PRIMARY_CHANNEL || '').trim().toLowerCase();
+  if (primaryChannel && !['whatsapp', 'discord', 'web'].includes(primaryChannel)) {
+    throw new ConfigError('PRIMARY_CHANNEL must be whatsapp, discord or web');
+  }
+
   const tts = provider(env, 'TTS', 'gpt-4o-mini-tts');
 
   const repoRoot = path.resolve(import.meta.dir, '..', '..');
@@ -178,6 +189,8 @@ export function loadConfig(env: Env = process.env): Config {
     dataDir: path.resolve(env.SUPERAGENT_DATA_DIR || path.join(os.homedir(), '.gstack', 'superagent')),
     adminToken,
     whatsapp,
+    discord: env.DISCORD_BOT_TOKEN ? { token: env.DISCORD_BOT_TOKEN.trim(), ownerId: discordOwner || undefined } : undefined,
+    primaryChannel: (primaryChannel || undefined) as Config['primaryChannel'],
     google: env.GOOGLE_CLIENT_ID && env.GOOGLE_CLIENT_SECRET
       ? { clientId: env.GOOGLE_CLIENT_ID, clientSecret: env.GOOGLE_CLIENT_SECRET }
       : undefined,
@@ -204,6 +217,7 @@ export function loadConfig(env: Env = process.env): Config {
 export function capabilityFlags(config: Config) {
   return {
     whatsapp: !!config.whatsapp,
+    discord: !!config.discord,
     google: !!config.google,
     notion: !!config.notion,
     voiceIn: !!config.stt,

@@ -15,6 +15,7 @@ import type { ReplyTarget } from './tools/types';
 import { clock, inQuietHours, formatLocal } from './clock';
 import { logger } from './log';
 import { truncate } from './format';
+import { discordOwner } from './channels/discord';
 
 const log = logger('delivery');
 
@@ -29,13 +30,18 @@ export class Delivery {
     return ch;
   }
 
-  /** Where proactive messages for a conversation go by default. */
+  /** Where proactive messages for a conversation go by default: PRIMARY_CHANNEL, else WhatsApp, Discord, web. */
   primaryTarget(conversationId: string): ReplyTarget {
     const s = this.services();
     if (conversationId.startsWith('member:')) return { channel: 'whatsapp', to: conversationId.slice('member:'.length) };
-    if (s.channels.has('whatsapp') && s.config.owners[0]) return { channel: 'whatsapp', to: s.config.owners[0] };
-    if (s.channels.has('web')) return { channel: 'web', to: 'owner' };
-    return { channel: 'console', to: 'owner' };
+    const discordUser = s.channels.has('discord') ? discordOwner(s.store, s.config) : null;
+    const options: Partial<Record<ChannelName, ReplyTarget>> = {
+      ...(s.channels.has('whatsapp') && s.config.owners[0] ? { whatsapp: { channel: 'whatsapp', to: s.config.owners[0] } } : {}),
+      ...(discordUser ? { discord: { channel: 'discord', to: discordUser } } : {}),
+      ...(s.channels.has('web') ? { web: { channel: 'web', to: 'owner' } } : {}),
+    };
+    const preferred = s.config.primaryChannel ? options[s.config.primaryChannel] : undefined;
+    return preferred ?? options.whatsapp ?? options.discord ?? options.web ?? { channel: 'console', to: 'owner' };
   }
 
   rememberActive(conversationId: string, target: ReplyTarget) {

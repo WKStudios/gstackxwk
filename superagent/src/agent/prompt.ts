@@ -64,8 +64,9 @@ export function staticSystemPrompt(s: Services, role: Role): string {
     ? `${String(Math.floor(config.quietHours.start / 60)).padStart(2, '0')}:${String(config.quietHours.start % 60).padStart(2, '0')}–${String(Math.floor(config.quietHours.end / 60)).padStart(2, '0')}:${String(config.quietHours.end % 60).padStart(2, '0')}`
     : 'none';
   const skills = s.skills.list();
+  const channels = [config.whatsapp && 'WhatsApp', config.discord && 'Discord', 'a web chat'].filter(Boolean).join(', ').replace(/, ([^,]*)$/, ' and $1');
 
-  return `You are ${config.agentName}, ${owner}'s personal agent. ${owner} reaches you on WhatsApp and sometimes a web chat — it's the same brain and the same memory on every channel. ${who}
+  return `You are ${config.agentName}, ${owner}'s personal agent. ${owner} reaches you on ${channels} — it's the same brain and the same memory on every channel. ${who}
 
 # How to talk
 - This is a chat on a phone. Lead with the answer or the outcome. Keep replies short — a few lines, or a tight list when a list is the point — and offer more detail rather than front-loading it.
