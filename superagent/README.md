@@ -91,7 +91,7 @@ Save the number in your phone as your agent and say hi.
 
 | Integration | Set | Then |
 |---|---|---|
-| **Gmail + Calendar + Drive** | Google Cloud console → new project → enable Gmail API, Google Calendar API, Google Drive API → OAuth consent screen (External; add yourself as a test user) → Credentials → OAuth client ID, type *Web application*, redirect URI `https://agent.example.com/oauth/google/callback` (add `http://localhost:8787/oauth/google/callback` too for testing on your computer) → `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET` | send **/connect google** and tap the link. Set the consent screen to *In production* (unverified is fine for personal use), otherwise Google expires the connection every 7 days. |
+| **Gmail + Calendar + Drive** | Google Cloud console → new project → enable Gmail API, Google Calendar API, Google Drive API → OAuth consent screen (External; add every Google account you'll connect as a test user) → Credentials → OAuth client ID, type *Web application*, redirect URI `https://agent.example.com/oauth/google/callback` (add `http://localhost:8787/oauth/google/callback` too for testing on your computer) → `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET` | send **/connect google** and tap the link. Several accounts? Send it again for each one: searches, the brief and calendar checks cover them all. Set the consent screen to *In production* (unverified is fine for personal use), otherwise Google expires the connection every 7 days. |
 | **Notion** | notion.so/profile/integrations → new internal integration → `NOTION_TOKEN`. On each page/database it should see: ••• → Connections → add it. Your capture inbox ("The Hub") id → `NOTION_HUB_DATABASE_ID` | "save this to the hub" |
 | **Voice notes in, voice replies, images** | `OPENAI_API_KEY` (or per-feature `STT_*`, `TTS_*`, `IMAGE_*` for any OpenAI-compatible provider, e.g. Groq Whisper) | send a voice note; `/voice on` to always reply with audio |
 | **Phone calls** | Twilio account + number: `TWILIO_ACCOUNT_SID`, `TWILIO_AUTH_TOKEN`, `TWILIO_FROM_NUMBER` | "call Sam and ask when the contract will be signed" |
@@ -122,7 +122,7 @@ Talk normally. Some things to try:
 | `/usage` · `/budget <usd>` | today's spend; raise today's cap |
 | `/voice on\|off\|mirror` | voice replies always / never / when you send voice |
 | `/vault set <name> <value>` | store a password for browser logins; the model only ever sees `{{secret:name}}` |
-| `/connect google` · `/disconnect google` | link or unlink Google |
+| `/connect google` · `/disconnect google [account]` | link a Google account (again for each extra account) or unlink one |
 | `/new` | fresh conversation thread (memory and automations stay) |
 | `/log` · `/status` · `/starter` · `/help` | recent actions · what's connected · install starter automations · help |
 

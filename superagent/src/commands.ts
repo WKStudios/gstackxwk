@@ -30,7 +30,7 @@ stop — stop what I'm doing now (*stop all* also cancels background work)
 /usage — today's spend · /budget <usd> — raise today's limit
 /voice on|off|mirror — reply with voice notes
 /vault set <name> <value> · /vault list · /vault delete <name>
-/connect google · /disconnect google
+/connect google (once per account) · /disconnect google
 /new — fresh conversation thread (memory stays)
 /log — my recent actions · /status — what's connected
 /starter — set up a daily brief and weekly reviews
@@ -132,7 +132,7 @@ export class Commands {
 
       case 'status': {
         const caps = capabilityFlags(config);
-        const google = s.google ? (s.google.isConnected() ? `connected (${s.google.connectedEmail() ?? 'account'})` : 'not connected — /connect google') : 'not configured';
+        const google = s.google ? (s.google.isConnected() ? s.google.emails().join(', ') : 'not connected — /connect google') : 'not configured';
         const bg = listBackground(conversationId);
         return [
           `*${config.agentName}* · ${config.model} · ${config.timezone}`,
@@ -194,14 +194,31 @@ export class Commands {
         if (!/^(https:\/\/|http:\/\/(localhost|127\.0\.0\.1)(:\d+)?(\/|$))/.test(config.publicBaseUrl)) {
           return 'PUBLIC_BASE_URL must be an https URL (or http://localhost while testing) that Google can redirect back to.';
         }
-        return `Tap to connect Gmail, Calendar and Drive (link valid 30 minutes):\n${s.google.authUrl()}`;
+        const connected = s.google.emails();
+        if (!connected.length) {
+          return `Tap to connect Gmail, Calendar and Drive (link valid 30 minutes):\n${s.google.authUrl()}\n\nGot more than one Google account? Send /connect google again afterwards for each.`;
+        }
+        return `Connected now: ${connected.join(', ')}.\nTap to add another Google account, or to reconnect one of these (link valid 30 minutes):\n${s.google.authUrl()}`;
       }
 
       case 'disconnect': {
         if (ownerOnly()) return ownerOnly();
-        if (word !== 'google' || !s.google) return 'Usage: /disconnect google';
-        s.google.disconnect();
-        return 'Google disconnected. (You can also revoke access at myaccount.google.com/permissions.)';
+        const [service = '', ...who] = rest;
+        if (service.toLowerCase().replace(/[.!]+$/, '') !== 'google' || !s.google) return 'Usage: /disconnect google [account]';
+        const connected = s.google.emails();
+        const which = who.join(' ').replace(/[.!]+$/, '');
+        if (!connected.length) return 'No Google account is connected.';
+        let target: string | undefined;
+        if (which && which.toLowerCase() !== 'all') {
+          const email = s.google.resolve(which);
+          if (!email) return `No connected account matches "${which}". Connected: ${connected.join(', ')}.`;
+          target = email;
+        } else if (!which && connected.length > 1) {
+          return `Which one? ${connected.map(e => `/disconnect google ${e}`).join(' · ')} · or /disconnect google all`;
+        }
+        const removed = s.google.disconnect(target);
+        const left = s.google.emails();
+        return `Disconnected ${removed.join(', ')}.${left.length ? ` Still connected: ${left.join(', ')}.` : ''} (You can also revoke access at myaccount.google.com/permissions.)`;
       }
 
       case 'new':

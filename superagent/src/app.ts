@@ -13,7 +13,7 @@ import { Approvals } from './approvals';
 import { AgentRunner } from './agent/runner';
 import { BrowserClient } from './integrations/browser';
 import { MediaProviders } from './integrations/media';
-import { GoogleClient } from './integrations/google';
+import { GoogleAccounts } from './integrations/google';
 import { NotionClient } from './integrations/notion';
 import { TwilioClient } from './integrations/twilio';
 import { SkillLibrary } from './skills';
@@ -74,7 +74,7 @@ export function createApp(config: Config, opts: AppOptions = {}): App {
     browser: new BrowserClient(config.browseServerScript, config.dataDir),
     media: new MediaProviders(config),
     skills: new SkillLibrary(BUILTIN_SKILLS_DIR, path.join(config.dataDir, 'skills')),
-    google: config.google ? new GoogleClient(config.google, store, `${config.publicBaseUrl}/oauth/google/callback`) : undefined,
+    google: config.google ? new GoogleAccounts(config.google, store, `${config.publicBaseUrl}/oauth/google/callback`) : undefined,
     notion: config.notion ? new NotionClient(config.notion) : undefined,
     twilio: config.twilio ? new TwilioClient(config.twilio, config.publicBaseUrl) : undefined,
     hooks: {

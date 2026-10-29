@@ -251,17 +251,33 @@ Do the task with your tools. Your final answer is delivered to ${config.ownerNam
   private async watchGmail(job: JobRow): Promise<JobOutcome> {
     const s = this.services();
     if (!s.google?.isConnected()) throw new Error('Google is not connected (send /connect google)');
-    const cfg = JSON.parse(job.config) as { query: string };
-    const state = JSON.parse(job.state || '{}') as { seen?: string[]; baseline?: boolean };
-    const seen = new Set(state.seen ?? []);
-    const rows = await s.google.searchEmail(`${cfg.query} newer_than:3d`, 25);
-    const fresh = rows.filter(r => !seen.has(r.id));
-    const nextSeen = [...fresh.map(r => r.id), ...(state.seen ?? [])].slice(0, 400);
-    if (state.baseline || !fresh.length) {
-      return { deliver: null, output: state.baseline ? `Baseline: ${rows.length} existing match(es) ignored.` : 'No new mail.', state: { seen: nextSeen } };
+    const cfg = JSON.parse(job.config) as { query: string; account?: string };
+    const state = JSON.parse(job.state || '{}') as { seen?: string[]; baseline?: boolean; accounts?: string[] };
+    const google = s.google;
+    let targets = google.all();
+    if (cfg.account) {
+      const email = google.resolve(cfg.account);
+      if (!email) throw new Error(`${cfg.account} is no longer connected (send /connect google)`);
+      targets = [google.client(email)];
     }
+    const seen = new Set(state.seen ?? []);
+    // An account connected after the watcher started gets a baseline of its own, not an alert for its old mail.
+    const known = new Set(state.accounts ?? targets.map(g => g.email));
+    // Message ids are only unique within one mailbox; bare ids in `seen` predate multiple accounts.
+    const rows = (
+      await Promise.all(
+        targets.map(async g => (await g.searchEmail(`${cfg.query} newer_than:3d`, 25)).map(r => ({ ...r, account: g.email, key: `${g.email}/${r.id}` }))),
+      )
+    ).flat();
+    const unseen = rows.filter(r => !seen.has(r.key) && !seen.has(r.id));
+    const fresh = unseen.filter(r => known.has(r.account));
+    const nextState = { seen: [...unseen.map(r => r.key), ...(state.seen ?? [])].slice(0, 400), accounts: targets.map(g => g.email) };
+    if (state.baseline || !fresh.length) {
+      return { deliver: null, output: state.baseline ? `Baseline: ${rows.length} existing match(es) ignored.` : 'No new mail.', state: nextState };
+    }
+    const showAccount = google.emails().length > 1;
     const list = fresh
-      .map(m => `- thread=${m.threadId} msg=${m.id} · ${m.date} · ${m.from} · ${m.subject}\n  ${truncate(m.snippet, 200)}`)
+      .map(m => `- thread=${m.threadId} msg=${m.id}${showAccount ? ` account=${m.account}` : ''} · ${m.date} · ${m.from} · ${m.subject}\n  ${truncate(m.snippet, 200)}`)
       .join('\n');
     const result = await s.runner.run({
       conversationId: job.conversation_id,
@@ -272,7 +288,7 @@ Do the task with your tools. Your final answer is delivered to ${config.ownerNam
       systemExtra: this.jobSystem(job, true),
     });
     const output = result.text || 'NO_UPDATE';
-    return { deliver: NO_UPDATE.test(output) ? null : output, output, state: { seen: nextSeen } };
+    return { deliver: NO_UPDATE.test(output) ? null : output, output, state: nextState };
   }
 
   private async checkIn(m: MissionRow): Promise<void> {

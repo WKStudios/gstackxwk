@@ -7,7 +7,7 @@ import type { Approvals } from './approvals';
 import type { AgentRunner } from './agent/runner';
 import type { BrowserClient } from './integrations/browser';
 import type { MediaProviders } from './integrations/media';
-import type { GoogleClient } from './integrations/google';
+import type { GoogleAccounts } from './integrations/google';
 import type { NotionClient } from './integrations/notion';
 import type { TwilioClient } from './integrations/twilio';
 import type { SkillLibrary } from './skills';
@@ -38,7 +38,7 @@ export interface Services {
   browser: BrowserClient;
   media: MediaProviders;
   skills: SkillLibrary;
-  google?: GoogleClient;
+  google?: GoogleAccounts;
   notion?: NotionClient;
   twilio?: TwilioClient;
   hooks: ConversationHooks;

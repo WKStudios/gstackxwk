@@ -189,9 +189,15 @@ export function createHandler(app: App) {
         const error = url.searchParams.get('error');
         if (error) return html(`Google sign-in was cancelled (${error}).`, 400);
         try {
-          const email = await services.google.handleCallback(url.searchParams.get('code') ?? '', url.searchParams.get('state') ?? '');
-          void services.delivery.notify('owner', `✅ Google connected (${email}). I can now read and draft email, manage your calendar and read Drive. Try: "what needs my reply today?"`, { urgent: true });
-          return html(`✅ Connected <b>${email}</b>.<br><br>You can close this tab and go back to WhatsApp.`);
+          const { email, reconnected } = await services.google.handleCallback(url.searchParams.get('code') ?? '', url.searchParams.get('state') ?? '');
+          const all = services.google.emails();
+          const message = reconnected
+            ? `✅ Reconnected ${email}.`
+            : all.length > 1
+              ? `✅ Google connected (${email}). I now work across ${all.length} accounts: ${all.join(', ')}. Your brief and calendar checks cover all of them.`
+              : `✅ Google connected (${email}). I can now read and draft email, manage your calendar and read Drive. Try: "what needs my reply today?"\nGot another Google account? Send /connect google again.`;
+          void services.delivery.notify('owner', message, { urgent: true });
+          return html(`✅ Connected <b>${xmlEscape(email)}</b>.<br><br>You can close this tab and go back to WhatsApp.`);
         } catch (err) {
           if (err instanceof GoogleAuthError) return html(err.message, 400);
           throw err;

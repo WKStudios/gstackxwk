@@ -1,11 +1,11 @@
 import { describe, expect, test } from 'bun:test';
 import * as fs from 'fs';
 import * as path from 'path';
-import { GoogleClient } from '../src/integrations/google';
+import { GoogleAccounts } from '../src/integrations/google';
 import { NotionClient } from '../src/integrations/notion';
 import { ToolError, type ToolContext, type ToolDef } from '../src/tools/types';
 import { saveFile } from '../src/tools/files';
-import { FakeClaude, makeApp, text } from './helpers';
+import { FakeClaude, fakeGoogle, inbound, makeApp, text } from './helpers';
 
 function setup(env: Record<string, string> = {}, claude?: FakeClaude) {
   const made = makeApp({ env, claude });
@@ -128,17 +128,7 @@ describe('files and scheduling tools', () => {
 
 describe('Google tools', () => {
   function google(t: ReturnType<typeof setup>, routes: Record<string, unknown>) {
-    const hits: string[] = [];
-    const fetchImpl = async (url: string, init?: RequestInit) => {
-      hits.push(`${init?.method ?? 'GET'} ${url}`);
-      if (url.startsWith('https://oauth2.googleapis.com/token')) return Response.json({ access_token: 'at', expires_in: 3600 });
-      const key = Object.keys(routes).find(k => url.includes(k));
-      if (!key) return Response.json({ error: { message: `no route for ${url}` } }, { status: 404 });
-      return Response.json(routes[key]);
-    };
-    t.s.store.setJson('google:tokens', { refresh_token: 'rt' });
-    t.s.google = new GoogleClient({ clientId: 'id', clientSecret: 'sec' }, t.s.store, 'https://agent.example.com/oauth/google/callback', fetchImpl);
-    return hits;
+    return fakeGoogle(t.s, { 'ada@me.com': routes }).hits;
   }
   const b64 = (s: string) => Buffer.from(s).toString('base64url');
 
@@ -196,6 +186,120 @@ describe('Google tools', () => {
   test('without a connection the tools explain how to connect', async () => {
     const t = setup({ GOOGLE_CLIENT_ID: 'id', GOOGLE_CLIENT_SECRET: 'sec' });
     await expect(t.call('gmail_search', { query: 'x' })).rejects.toThrow('/connect google');
+  });
+
+  const email = (id: string, from: string, subject: string) => ({
+    [`/messages/${id}?format=metadata`]: { id, threadId: `t-${id}`, snippet: subject, labelIds: ['INBOX'], payload: { headers: [{ name: 'From', value: from }, { name: 'Subject', value: subject }] } },
+  });
+
+  test('with several accounts, searches cover all of them and actions name their account', async () => {
+    const t = setup({ GOOGLE_CLIENT_ID: 'id', GOOGLE_CLIENT_SECRET: 'sec' });
+    const { calls } = fakeGoogle(
+      t.s,
+      {
+        'ada@me.com': {
+          '/messages?': { messages: [{ id: 'p1' }] },
+          ...email('p1', 'Mum <mum@me.com>', 'Sunday lunch'),
+          '/drafts': { id: 'd1', message: { id: 'm1', threadId: 't1' } },
+        },
+        'ada@acme.com': {
+          '/messages?': { messages: [{ id: 'w1' }] },
+          ...email('w1', 'Jai <jai@acme.com>', 'Q4 deck'),
+          '/drafts/d9': { message: { payload: { headers: [{ name: 'To', value: 'jai@acme.com' }, { name: 'Subject', value: 'Re: Q4 deck' }], mimeType: 'text/plain', body: { data: Buffer.from('Approved.').toString('base64url') } } } },
+        },
+        'old@gmail.com': {},
+      },
+      { revoked: ['old@gmail.com'] },
+    );
+    const out = (await t.call('gmail_search', { query: 'in:inbox' })) as string;
+    expect(out).toContain('## ada@me.com\n- thread=t-p1 msg=p1');
+    expect(out).toContain('## ada@acme.com\n- thread=t-w1 msg=w1');
+    // A revoked account says so without hiding the others.
+    expect(out).toContain('## old@gmail.com\n(couldn\'t read this account: Google access for old@gmail.com expired or was revoked');
+
+    // One account by name, or by a unique part of the address.
+    expect(await t.call('gmail_search', { query: 'in:inbox', account: 'ACME' })).not.toContain('Sunday lunch');
+    await expect(t.call('gmail_search', { query: 'x', account: 'ada' })).rejects.toThrow('No connected Google account matches "ada"');
+
+    // Ids only exist in one account, so acting on one needs it named.
+    await expect(t.call('gmail_read_thread', { thread_id: 't-w1' })).rejects.toThrow('Pass account');
+    const summary = await t.tool('gmail_send_draft').approval!({ draft_id: 'd9', account: 'ada@acme.com' }, t.ctx);
+    expect(summary).toBe('📧 Send email\nFrom: ada@acme.com\nTo: jai@acme.com\nSubject: Re: Q4 deck\n\nApproved.');
+    expect(calls.filter(c => c.url.includes('/drafts/d9')).map(c => c.account)).toEqual(['ada@acme.com']);
+    // A new email goes from the default (first) account.
+    expect(await t.call('gmail_create_draft', { to: 'x@y.com', subject: 'Hi', body: 'Hello' })).toContain('Draft created in ada@me.com');
+    expect(calls.at(-1)).toMatchObject({ account: 'ada@me.com', method: 'POST' });
+  });
+
+  test('double-bookings are found across accounts; one meeting on two calendars counts once', async () => {
+    const t = setup({ GOOGLE_CLIENT_ID: 'id', GOOGLE_CLIENT_SECRET: 'sec' });
+    const ev = (id: string, summary: string, start: string, end: string) => ({ id, summary, start: { dateTime: start }, end: { dateTime: end }, organizer: { self: true } });
+    const board = ev('b1', 'Board sync', '2026-11-02T15:00:00Z', '2026-11-02T16:00:00Z');
+    const { calls } = fakeGoogle(t.s, {
+      'ada@me.com': {
+        '/calendarList': { items: [{ id: 'ada@me.com', summary: 'Personal', primary: true }] },
+        '/events?': { items: [ev('d1', 'Dentist', '2026-11-02T10:00:00Z', '2026-11-02T11:00:00Z'), board] },
+      },
+      'ada@acme.com': {
+        '/calendarList': { items: [{ id: 'ada@acme.com', summary: 'Work', primary: true }] },
+        '/events?': { items: [ev('s1', 'Standup', '2026-11-02T10:30:00Z', '2026-11-02T10:45:00Z'), board] },
+        '/events/inv1': { ...ev('inv1', 'Offsite', '2026-11-05T09:00:00Z', '2026-11-05T17:00:00Z'), organizer: { email: 'sam@acme.com' }, attendees: [{ email: 'ada@acme.com', self: true }] },
+      },
+    });
+    const out = (await t.call('calendar_find_conflicts', { days: 7 })) as string;
+    expect(out).toContain('Double-bookings (1):');
+    expect(out).toContain('Dentist');
+    expect(out).toContain('account=ada@me.com');
+    expect(out).toContain('Standup');
+    expect(out).toContain('account=ada@acme.com');
+    const list = (await t.call('calendar_list_events', {})) as string;
+    expect(list.match(/Board sync/g)).toHaveLength(1);
+    await expect(t.tool('calendar_delete_event').approval!({ calendar_id: 'primary', event_id: 's1' }, t.ctx)).rejects.toThrow('Pass account');
+    // An RSVP goes from the account the invite is in, and tells the organizer.
+    expect(await t.call('calendar_rsvp', { calendar_id: 'primary', event_id: 'inv1', response: 'accepted', account: 'acme' })).toBe('RSVP\'d accepted to "Offsite".');
+    expect(calls.at(-1)).toMatchObject({ account: 'ada@acme.com', method: 'PATCH' });
+    expect(calls.at(-1)!.url).toContain('sendUpdates=all');
+  });
+});
+
+describe('Google accounts', () => {
+  const idToken = (email: string) => `x.${Buffer.from(JSON.stringify({ email })).toString('base64url')}.sig`;
+  const who: Record<string, string> = { personal: 'ada@me.com', work: 'ada@acme.com' };
+  const fetchImpl = async (url: string, init?: RequestInit) => {
+    const code = new URLSearchParams(String(init?.body ?? '')).get('code') ?? '';
+    return Response.json({ refresh_token: `rt-${code}`, access_token: 'at', expires_in: 3600, id_token: idToken(who[code]) });
+  };
+  const stateOf = (url: string) => new URL(url).searchParams.get('state')!;
+
+  test('each /connect google adds an account; reconnecting one replaces it', async () => {
+    const { app, s, wa } = makeApp({ env: { GOOGLE_CLIENT_ID: 'id', GOOGLE_CLIENT_SECRET: 'sec' } });
+    const g = new GoogleAccounts({ clientId: 'id', clientSecret: 'sec' }, s.store, 'https://agent.example.com/oauth/google/callback', fetchImpl);
+    s.google = g;
+    const first = g.authUrl();
+    expect(new URL(first).searchParams.get('prompt')).toBe('select_account consent');
+    expect(await g.handleCallback('personal', stateOf(first))).toEqual({ email: 'ada@me.com', reconnected: false });
+    const second = g.authUrl();
+    expect(await g.handleCallback('work', stateOf(second))).toEqual({ email: 'ada@acme.com', reconnected: false });
+    await expect(g.handleCallback('work', stateOf(second))).rejects.toThrow('expired');
+    expect(await g.handleCallback('personal', stateOf(g.authUrl()))).toEqual({ email: 'ada@me.com', reconnected: true });
+    expect(g.emails()).toEqual(['ada@me.com', 'ada@acme.com']);
+
+    await app.router.handleInbound(inbound({ text: '/connect google' }));
+    expect(wa.texts().at(-1)).toContain('Connected now: ada@me.com, ada@acme.com.');
+    await app.router.handleInbound(inbound({ text: '/disconnect google' }));
+    expect(wa.texts().at(-1)).toContain('Which one? /disconnect google ada@me.com · /disconnect google ada@acme.com');
+    await app.router.handleInbound(inbound({ text: '/disconnect google acme' }));
+    expect(wa.texts().at(-1)).toContain('Disconnected ada@acme.com. Still connected: ada@me.com.');
+    await app.router.handleInbound(inbound({ text: '/status' }));
+    expect(wa.texts().at(-1)).toContain('Google: ada@me.com ·');
+  });
+
+  test('an account connected before multi-account support carries over', () => {
+    const { s } = makeApp();
+    s.store.setJson('google:tokens', { refresh_token: 'rt', email: 'ada@me.com' });
+    const g = new GoogleAccounts({ clientId: 'id', clientSecret: 'sec' }, s.store, 'https://agent.example.com/oauth/google/callback', fetchImpl);
+    expect(g.emails()).toEqual(['ada@me.com']);
+    expect(s.store.get('google:tokens')).toBeFalsy();
   });
 });
 

@@ -23,7 +23,7 @@ The Base44 super agent list, item by item, and what this agent does for each.
 | 8 | Scan 7 days for double-bookings | ✅ | `calendar_find_conflicts` checks overlaps across every calendar in code; declined and "free" events don't count |
 | 9 | Warn about deadlines before they hit | ✅ | deadlines saved as memories, scanned by the brief and the Sunday calendar check; one-off reminders on request |
 | 10 | Prep on who you're meeting and why | ✅ | `meeting-prep` playbook: memory, email history, then the web |
-| 11 | Events across calendars, timezone traps | ✅ | all calendars at once; events set in another timezone show both times and get flagged |
+| 11 | Events across calendars, timezone traps | ✅ | all calendars in every connected Google account at once (`/connect google` once per account); a meeting on two accounts counts once; events set in another timezone show both times and get flagged |
 | 12 | Never move or cancel someone else's meeting without you | ✅ | **enforced in code**: changing, cancelling or RSVPing to a meeting with guests, or one you don't organize, waits for your Approve |
 
 ## 3. Notion and the note system

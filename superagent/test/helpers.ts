@@ -7,6 +7,8 @@ import Anthropic from '@anthropic-ai/sdk';
 import { loadConfig, type Config } from '../src/config';
 import { createApp, type AppOptions } from '../src/app';
 import type { Button, Channel, InboundMessage, OutboundMedia } from '../src/channels/types';
+import { GoogleAccounts } from '../src/integrations/google';
+import type { Services } from '../src/services';
 
 export function tempDir(): string {
   return fs.mkdtempSync(path.join(os.tmpdir(), 'superagent-test-'));
@@ -194,4 +196,38 @@ export async function until(cond: () => boolean, timeoutMs = 3000) {
     if (Date.now() - start > timeoutMs) throw new Error('condition not met in time');
     await Bun.sleep(5);
   }
+}
+
+/**
+ * A fake Google API with one or more connected accounts. Each account's
+ * requests are answered from its own routes (matched by URL substring);
+ * accounts in `revoked` fail to refresh their token.
+ */
+export function fakeGoogle(s: Services, accounts: Record<string, Record<string, unknown>>, opts: { revoked?: string[] } = {}) {
+  const hits: string[] = [];
+  const calls: { account: string; method: string; url: string }[] = [];
+  const fetchImpl = async (url: string, init?: RequestInit) => {
+    const method = init?.method ?? 'GET';
+    hits.push(`${method} ${url}`);
+    if (url.startsWith('https://oauth2.googleapis.com/token')) {
+      const email = (new URLSearchParams(String(init?.body ?? '')).get('refresh_token') ?? '').replace(/^rt-/, '');
+      if (opts.revoked?.includes(email)) return Response.json({ error: 'invalid_grant' }, { status: 400 });
+      return Response.json({ access_token: `at-${email}`, expires_in: 3600 });
+    }
+    const account = String((init?.headers as Record<string, string> | undefined)?.Authorization ?? '').replace(/^Bearer at-/, '');
+    calls.push({ account, method, url });
+    const routes = accounts[account] ?? {};
+    const key = Object.keys(routes).find(k => url.includes(k));
+    if (!key) return Response.json({ error: { message: `no route for ${url}` } }, { status: 404 });
+    return Response.json(routes[key]);
+  };
+  const save = () => s.store.setJson('google:accounts', Object.keys(accounts).map(email => ({ email, refresh_token: `rt-${email}` })));
+  save();
+  s.google = new GoogleAccounts({ clientId: 'id', clientSecret: 'sec' }, s.store, 'https://agent.example.com/oauth/google/callback', fetchImpl);
+  /** Connect another account after the fact, as a later /connect google would. */
+  const connect = (email: string, routes: Record<string, unknown>) => {
+    accounts[email] = routes;
+    save();
+  };
+  return { hits, calls, connect };
 }

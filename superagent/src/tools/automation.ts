@@ -104,17 +104,20 @@ export const automationTools: ToolDef[] = [
   defineTool({
     name: 'watch_gmail',
     description:
-      'Trigger on new email matching a Gmail search ("from:bank.com", "subject:invoice has:attachment") and handle each one with instructions (summarize, file, alert, draft a reply).',
+      'Trigger on new email matching a Gmail search ("from:bank.com", "subject:invoice has:attachment") and handle each one with instructions (summarize, file, alert, draft a reply). Watches every connected Google account unless account is given.',
     ownerOnly: true,
     input: z.object({
       name: z.string(),
       query: z.string(),
       what: z.string().describe('What to do with each new match'),
       every_minutes: z.number().int().min(5).max(1440).optional(),
+      account: z.string().optional().describe('Only watch this Google account (email address)'),
     }),
     run: async (input, ctx) => {
       const { store, config, google } = ctx.services;
       if (!google?.isConnected()) throw new ToolError('Google is not connected. The owner can send /connect google.');
+      const account = input.account ? google.resolve(input.account) : undefined;
+      if (account === null) throw new ToolError(`No connected Google account matches "${input.account}". Connected: ${google.emails().join(', ')}.`);
       const job = store.createJob({
         conversation_id: ctx.conversationId,
         name: input.name,
@@ -123,12 +126,12 @@ export const automationTools: ToolDef[] = [
         timezone: config.timezone,
         prompt: input.what,
         mode: 'if_noteworthy',
-        config: JSON.stringify({ query: input.query }),
+        config: JSON.stringify({ query: input.query, ...(account ? { account } : {}) }),
         status: 'active',
         next_run_at: clock.now().toISOString(),
         state: JSON.stringify({ seen: [], baseline: true }),
       });
-      return `Watching Gmail for "${input.query}" every ${input.every_minutes ?? 15} min as "${job.name}" [${job.id}]. Existing matches are ignored; only new mail triggers it.`;
+      return `Watching Gmail${account ? ` (${account})` : ''} for "${input.query}" every ${input.every_minutes ?? 15} min as "${job.name}" [${job.id}]. Existing matches are ignored; only new mail triggers it.`;
     },
   }),
   defineTool({

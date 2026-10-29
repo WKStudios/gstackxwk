@@ -47,7 +47,16 @@ async function check() {
     local ? `${config.publicBaseUrl} (fine for testing on this computer; WhatsApp needs a public https URL)` : config.publicBaseUrl,
   );
   line(!!config.adminToken, 'Web chat', config.adminToken ? `${config.publicBaseUrl}/chat?token=…` : 'set ADMIN_TOKEN to enable');
-  if (s.google) line(s.google.isConnected(), 'Google', s.google.isConnected() ? s.google.connectedEmail() ?? 'connected' : 'configured; send /connect google');
+  if (s.google?.isConnected()) {
+    for (const g of s.google.all()) {
+      try {
+        await g.profile();
+        line(true, 'Google', g.email);
+      } catch (err) {
+        line(false, 'Google', `${g.email}: ${errorMessage(err)}`);
+      }
+    }
+  } else if (s.google) line(false, 'Google', 'configured; send /connect google');
   else line(null, 'Google', 'not configured');
   if (s.notion) {
     try {

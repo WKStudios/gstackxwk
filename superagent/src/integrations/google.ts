@@ -1,7 +1,8 @@
 /**
- * Gmail, Google Calendar and Google Drive over plain REST with an OAuth
- * refresh token. The owner connects once (/connect google → consent screen →
- * /oauth/google/callback); the refresh token lives in the local database.
+ * Gmail, Google Calendar and Google Drive over plain REST with OAuth refresh
+ * tokens. The owner connects each account once (/connect google → consent
+ * screen → /oauth/google/callback); refresh tokens live in the local database.
+ * GoogleAccounts holds every connected account; GoogleClient talks to one.
  */
 
 import * as crypto from 'crypto';
@@ -18,11 +19,13 @@ export const GOOGLE_SCOPES = [
 ];
 
 interface Tokens {
+  email: string;
   refresh_token: string;
   access_token?: string;
   expires_at?: number;
-  email?: string;
 }
+
+const ACCOUNTS_KEY = 'google:accounts';
 
 type FetchLike = (input: string, init?: RequestInit) => Promise<Response>;
 
@@ -49,6 +52,7 @@ export interface EmailMessage extends EmailSummary {
 }
 
 export interface CalendarEvent {
+  account: string;
   calendarId: string;
   calendarName: string;
   id: string;
@@ -165,22 +169,78 @@ async function mapLimit<T, R>(items: T[], limit: number, fn: (item: T) => Promis
   return out;
 }
 
-export class GoogleClient {
+/** The email claim of an OpenID id_token. It comes straight from Google's token endpoint over TLS, so it isn't re-verified. */
+function idTokenEmail(idToken: unknown): string | null {
+  if (typeof idToken !== 'string') return null;
+  try {
+    const claims = JSON.parse(b64urlDecode(idToken.split('.')[1] ?? '').toString('utf-8'));
+    return typeof claims.email === 'string' ? claims.email : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Every connected Google account, in the order they were connected. The first
+ * is the default for new email and events; searches can cover all of them.
+ */
+export class GoogleAccounts {
+  private readonly clients = new Map<string, GoogleClient>();
+
   constructor(
     private readonly cfg: { clientId: string; clientSecret: string },
     private readonly store: Store,
     private readonly redirectUri: string,
     private readonly fetchImpl: FetchLike = fetch,
-  ) {}
-
-  // ─── OAuth ───────────────────────────────────────────────────
-
-  isConnected(): boolean {
-    return !!this.store.getJson<Tokens | null>('google:tokens', null)?.refresh_token;
+  ) {
+    this.migrate();
   }
 
-  connectedEmail(): string | null {
-    return this.store.getJson<Tokens | null>('google:tokens', null)?.email ?? null;
+  private load(): Tokens[] {
+    return this.store.getJson<Tokens[]>(ACCOUNTS_KEY, []);
+  }
+
+  private save(list: Tokens[]) {
+    this.store.setJson(ACCOUNTS_KEY, list);
+  }
+
+  /** Before multi-account support the one account lived under google:tokens. */
+  private migrate() {
+    const legacy = this.store.getJson<(Omit<Tokens, 'email'> & { email?: string }) | null>('google:tokens', null);
+    if (!legacy?.refresh_token) return;
+    if (!this.load().length) this.save([{ ...legacy, email: legacy.email ?? 'google' }]);
+    this.store.set('google:tokens', null);
+  }
+
+  emails(): string[] {
+    return this.load().map(t => t.email);
+  }
+
+  isConnected(): boolean {
+    return this.load().length > 0;
+  }
+
+  /** Match a full address in any case, or a unique part of one ("work", "@acme.com"). */
+  resolve(name: string): string | null {
+    const emails = this.emails();
+    const n = name.trim().toLowerCase();
+    const exact = emails.find(e => e.toLowerCase() === n);
+    if (exact) return exact;
+    const partial = emails.filter(e => e.toLowerCase().includes(n));
+    return n && partial.length === 1 ? partial[0] : null;
+  }
+
+  client(email: string): GoogleClient {
+    let c = this.clients.get(email);
+    if (!c) {
+      c = new GoogleClient(email, force => this.accessToken(email, force), this.fetchImpl);
+      this.clients.set(email, c);
+    }
+    return c;
+  }
+
+  all(): GoogleClient[] {
+    return this.emails().map(e => this.client(e));
   }
 
   /** A signed, single-use state value ties the callback to a /connect request. */
@@ -193,14 +253,16 @@ export class GoogleClient {
       response_type: 'code',
       scope: GOOGLE_SCOPES.join(' '),
       access_type: 'offline',
-      prompt: 'consent',
+      // select_account lets the owner pick a different account each time.
+      prompt: 'select_account consent',
       include_granted_scopes: 'true',
       state,
     });
     return `https://accounts.google.com/o/oauth2/v2/auth?${params}`;
   }
 
-  async handleCallback(code: string, state: string): Promise<string> {
+  /** Adds the account, or replaces its tokens if it was already connected. */
+  async handleCallback(code: string, state: string): Promise<{ email: string; reconnected: boolean }> {
     const issued = this.store.get(`google:oauth_state:${state}`);
     this.store.set(`google:oauth_state:${state}`, null);
     if (!issued || clock.now().getTime() - parseInt(issued, 10) > 30 * 60_000) {
@@ -221,27 +283,40 @@ export class GoogleClient {
     if (!resp.ok || !json.refresh_token) {
       throw new GoogleAuthError(`Google sign-in failed: ${json.error_description || json.error || resp.status}`);
     }
+    let email = idTokenEmail(json.id_token);
+    if (!email) {
+      const me = await this.fetchImpl('https://gmail.googleapis.com/gmail/v1/users/me/profile', {
+        headers: { Authorization: `Bearer ${json.access_token}` },
+      });
+      email = me.ok ? (((await me.json()) as any).emailAddress ?? null) : null;
+    }
+    if (!email) throw new GoogleAuthError("Google didn't say which account this is. Send /connect google and try again.");
     const tokens: Tokens = {
+      email,
       refresh_token: json.refresh_token,
       access_token: json.access_token,
       expires_at: clock.now().getTime() + (json.expires_in ?? 3600) * 1000,
     };
-    this.store.setJson('google:tokens', tokens);
-    try {
-      const me = await this.api('GET', 'https://gmail.googleapis.com/gmail/v1/users/me/profile');
-      tokens.email = me.emailAddress;
-      this.store.setJson('google:tokens', tokens);
-    } catch {}
-    return tokens.email ?? 'your Google account';
+    const list = this.load();
+    const i = list.findIndex(t => t.email.toLowerCase() === email!.toLowerCase());
+    if (i >= 0) list[i] = tokens;
+    else list.push(tokens);
+    this.save(list);
+    return { email, reconnected: i >= 0 };
   }
 
-  disconnect() {
-    this.store.set('google:tokens', null);
+  /** Forget one account, or every account. Returns the addresses removed. */
+  disconnect(email?: string): string[] {
+    const list = this.load();
+    const removed = list.filter(t => !email || t.email === email).map(t => t.email);
+    this.save(list.filter(t => !removed.includes(t.email)));
+    for (const e of removed) this.clients.delete(e);
+    return removed;
   }
 
-  private async accessToken(force = false): Promise<string> {
-    const tokens = this.store.getJson<Tokens | null>('google:tokens', null);
-    if (!tokens?.refresh_token) throw new GoogleAuthError('Google is not connected. Send /connect google to link your account.');
+  private async accessToken(email: string, force: boolean): Promise<string> {
+    const tokens = this.load().find(t => t.email === email);
+    if (!tokens) throw new GoogleAuthError(`${email} isn't connected. Send /connect google to link it.`);
     if (!force && tokens.access_token && (tokens.expires_at ?? 0) > clock.now().getTime() + 60_000) return tokens.access_token;
     const resp = await this.fetchImpl('https://oauth2.googleapis.com/token', {
       method: 'POST',
@@ -256,18 +331,32 @@ export class GoogleClient {
     const json: any = await resp.json();
     if (!resp.ok) {
       if (json.error === 'invalid_grant') {
-        throw new GoogleAuthError('Google access expired or was revoked. Send /connect google to reconnect.');
+        throw new GoogleAuthError(`Google access for ${email} expired or was revoked. Send /connect google and sign in as ${email} to reconnect.`);
       }
       throw new Error(`Google token refresh failed: ${json.error_description || json.error || resp.status}`);
     }
-    tokens.access_token = json.access_token;
-    tokens.expires_at = clock.now().getTime() + (json.expires_in ?? 3600) * 1000;
-    this.store.setJson('google:tokens', tokens);
-    return tokens.access_token!;
+    // Re-read the list: another account may have been added while this request was out.
+    const list = this.load();
+    const current = list.find(t => t.email === email);
+    if (current) {
+      current.access_token = json.access_token;
+      current.expires_at = clock.now().getTime() + (json.expires_in ?? 3600) * 1000;
+      this.save(list);
+    }
+    return json.access_token;
   }
+}
+
+/** One Google account's Gmail, Calendar and Drive. */
+export class GoogleClient {
+  constructor(
+    readonly email: string,
+    private readonly token: (force: boolean) => Promise<string>,
+    private readonly fetchImpl: FetchLike = fetch,
+  ) {}
 
   private async request(method: string, url: string, body?: unknown, retried = false): Promise<Response> {
-    const token = await this.accessToken(retried);
+    const token = await this.token(retried);
     const resp = await this.fetchImpl(url, {
       method,
       headers: { Authorization: `Bearer ${token}`, ...(body !== undefined ? { 'Content-Type': 'application/json' } : {}) },
@@ -296,6 +385,11 @@ export class GoogleClient {
 
   private gmail(p: string) {
     return `https://gmail.googleapis.com/gmail/v1/users/me/${p}`;
+  }
+
+  /** Confirms the connection still works. */
+  async profile(): Promise<{ emailAddress: string; messagesTotal?: number }> {
+    return this.api('GET', this.gmail('profile'));
   }
 
   private toSummary(m: any): EmailSummary {
@@ -419,6 +513,7 @@ export class GoogleClient {
     const allDay = !!e.start?.date;
     const self = (e.attendees ?? []).find((a: any) => a.self);
     return {
+      account: this.email,
       calendarId,
       calendarName,
       id: e.id,

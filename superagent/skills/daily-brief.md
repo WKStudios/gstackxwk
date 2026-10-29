@@ -15,6 +15,9 @@ Goal: one message the owner can read in 30 seconds and act on.
 3. `recall` deadlines and open commitments (`kind: deadline`, `kind: commitment`).
 4. Active missions from the context block.
 
+With several Google accounts connected, steps 1 and 2 already cover all of them. Mark which account
+an item is in only where it helps (e.g. "work:"), never as a section per account.
+
 ## Decide what matters
 - Needs a reply: a real person asked a question, requested something, or is waiting on the owner.
   Put the oldest-waiting and most important first. Say who, what they want, and how long they've waited.

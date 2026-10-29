@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'bun:test';
 import { clock } from '../src/clock';
-import { FakeClaude, idle, inbound, makeApp, text, toolUse, until } from './helpers';
+import { FakeClaude, fakeGoogle, idle, inbound, makeApp, text, toolUse, until } from './helpers';
 
 function withClock<T>(iso: string, fn: () => Promise<T>): Promise<T> {
   const real = clock.now;
@@ -140,6 +140,47 @@ describe('scheduler', () => {
     expect(prompt).toContain('<added>\nPrice: £199\n</added>');
     expect(claude.calls[0].tools.map((t: any) => t.name)).not.toContain('send_message');
     expect(wa.texts()).toEqual(['📉 Price dropped to £199: https://shop.example/item']);
+  });
+
+  test('Gmail watchers cover every account; a newly connected account gets its own baseline', async () => {
+    const claude = new FakeClaude(() => ({ content: [text('🧾 New invoice from Acme')] }));
+    const { app, s, wa } = makeApp({ claude, env: { GOOGLE_CLIENT_ID: 'id', GOOGLE_CLIENT_SECRET: 'sec' } });
+    s.store.touchWindow('whatsapp:15550001111');
+    const inbox = (...ids: string[]) => ({
+      '/messages?': { messages: ids.map(id => ({ id })) },
+      ...Object.fromEntries(ids.map(id => [`/messages/${id}?`, { id, threadId: `t-${id}`, snippet: 'Invoice attached', payload: { headers: [{ name: 'Subject', value: `Invoice ${id}` }] } }])),
+    });
+    const accounts: Record<string, Record<string, unknown>> = { 'ada@me.com': inbox('p1'), 'ada@acme.com': inbox('w1') };
+    const google = fakeGoogle(s, accounts);
+    const job = s.store.createJob({
+      conversation_id: 'owner',
+      name: 'Invoices',
+      kind: 'watch_gmail',
+      schedule: 'every:15',
+      timezone: 'UTC',
+      prompt: 'Tell me about new invoices',
+      mode: 'if_noteworthy',
+      config: JSON.stringify({ query: 'subject:invoice' }),
+      status: 'active',
+      next_run_at: new Date().toISOString(),
+      state: JSON.stringify({ seen: [], baseline: true }),
+    });
+    expect((await app.scheduler.runJobNow(job.id)).output).toBe('Baseline: 2 existing match(es) ignored.');
+    expect((await app.scheduler.runJobNow(job.id)).output).toBe('No new mail.');
+
+    accounts['ada@acme.com'] = inbox('w2', 'w1');
+    google.connect('old@gmail.com', inbox('o1'));
+    expect((await app.scheduler.runJobNow(job.id)).status).toBe('sent');
+    expect(claude.calls).toHaveLength(1);
+    const prompt = claude.calls[0].messages[0].content[0].text;
+    expect(prompt).toContain('msg=w2 account=ada@acme.com');
+    // old@gmail.com's mail from before it was connected isn't news.
+    expect(prompt).not.toContain('o1');
+    expect(wa.texts()).toEqual(['🧾 New invoice from Acme']);
+
+    accounts['old@gmail.com'] = inbox('o2', 'o1');
+    await app.scheduler.runJobNow(job.id);
+    expect(claude.calls[1].messages[0].content[0].text).toContain('msg=o2 account=old@gmail.com');
   });
 
   test('mission check-ins log progress and missed deadlines fail loudly', async () => {

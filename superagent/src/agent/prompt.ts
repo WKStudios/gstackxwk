@@ -22,11 +22,19 @@ type TextBlock = Anthropic.Beta.Messages.BetaTextBlockParam;
 function capabilities(s: Services, role: Role): string {
   const { config } = s;
   const lines: string[] = [];
-  const googleConnected = !!s.google?.isConnected();
+  const accounts = s.google?.emails() ?? [];
   if (role === 'owner') {
     lines.push(
       `- Gmail, Google Calendar, Google Drive: ${
-        !config.google ? 'not configured (needs GOOGLE_CLIENT_ID/SECRET)' : googleConnected ? 'connected' : 'configured but not connected yet — the owner sends /connect google'
+        !config.google
+          ? 'not configured (needs GOOGLE_CLIENT_ID/SECRET)'
+          : accounts.length > 1
+            ? `connected to ${accounts.length} accounts: ${accounts.map((a, i) => (i === 0 ? `${a} (default)` : a)).join(', ')}. ` +
+              'Searches, the brief and calendar checks cover every account unless you pass account. Anything done to an email, draft, event or file needs the account it came from (results show it). ' +
+              'New email and events go from the default account unless the thread, the person or a saved preference points to another.'
+            : accounts.length
+              ? `connected (${accounts[0]})`
+              : 'configured but not connected yet — the owner sends /connect google'
       }`,
     );
   }
