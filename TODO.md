@@ -98,6 +98,26 @@
   - [ ] Streaming (WebSocket live preview for pair browsing)
   - [ ] CDP mode (connect to already-running Chrome/Electron apps)
 
+## Phase 7: Superagent (v0.4.0)
+  - [x] WhatsApp Cloud API channel (signed webhooks, media, buttons, voice notes, templates)
+  - [x] Web chat + terminal channels sharing one conversation and memory
+  - [x] Discord bot channel (gateway DMs, pairing code, approval buttons)
+  - [x] Several Google accounts at once
+  - [x] Manual Claude agent loop: streaming, approvals, stop, pause_turn, refusals, compaction
+  - [x] Approval gates enforced in code (email, invites, others' meetings, submits, calls)
+  - [x] Memory (typed, pinned, full-text recall) + searchable transcript
+  - [x] Gmail, Calendar, Drive, Notion (The Hub) tools
+  - [x] Schedules, page/email watchers (diff-first), multi-day missions, sub-agents
+  - [x] Code sandbox, PDF generation, hosted files, image generation, voice in/out
+  - [x] Quiet hours, 24h window + template nudges, outbox, spend cap, audit log
+  - [x] Auth vault for browser logins (model never sees the secret)
+  - [ ] Two-way conversational phone calls (realtime voice)
+  - [ ] Push triggers for Drive/Calendar changes (watch channels) instead of polling
+  - [ ] WhatsApp group threads (when the Cloud API supports them broadly)
+  - [ ] Notion API 2025-09-03 (data sources) for multi-source databases
+  - [ ] Per-member memory scopes and roles beyond owner/member
+  - [ ] Eval set for the daily brief and triage playbooks
+
 ## Future Ideas
   - [ ] Linux/Windows cookie decryption (GNOME Keyring / kwallet / DPAPI)
   - [ ] Trend tracking across QA runs — compare baseline.json over time, detect regressions (P2, S)

@@ -26,6 +26,8 @@ Eight opinionated workflow skills for [Claude Code](https://docs.anthropic.com/e
 | `/setup-browser-cookies` | Session manager | Import cookies from your real browser (Comet, Chrome, Arc, Brave, Edge) into the headless session. Test authenticated pages without logging in manually. |
 | `/retro` | Engineering manager | Team-aware retro: your deep-dive + per-person praise and growth opportunities for every contributor. |
 
+Plus **[superagent](superagent/README.md)**: a personal agent you message on WhatsApp — email, calendar, Notion, research, a real browser, schedules and background missions — built on the same browser.
+
 ## Demo: one feature, five modes
 
 I start almost every feature in plan mode. I describe what I want to build, then use `/plan-ceo-review` to pressure-test whether I am even building the right thing. Only after the product direction is locked do I shift into engineering, review, ship, and test.
@@ -500,6 +502,20 @@ Claude: Week of Mar 1: 47 commits (3 contributors), 3.2k LOC, 38% tests, 12 PRs,
 ```
 
 It saves a JSON snapshot to `.context/retros/` so the next run can show trends. Run `/retro compare` to see this week vs last week side by side.
+
+---
+
+## Superagent: your agent on WhatsApp
+
+The same headless browser that gives `/browse` its eyes also powers a personal agent that lives on WhatsApp. Message it from your phone and it works through your Gmail, Calendar, Drive and Notion, researches with sub-agents, fills in forms in a real browser, makes PDFs, runs code in a sandbox, and keeps going on scheduled tasks and multi-day missions in the background. Anything outward-facing (sending an email, moving someone's meeting, submitting a form) waits for you to tap **Approve**.
+
+```bash
+cp superagent/.env.example .env      # ANTHROPIC_API_KEY, OWNER_NAME, OWNER_TIMEZONE
+bun run superagent:console           # try it in the terminal
+bun run superagent                   # serve: WhatsApp webhook + web chat + scheduler
+```
+
+Setup (WhatsApp Cloud API, Google, Notion, voice, phone calls): [superagent/README.md](superagent/README.md). What it can do, item by item: [superagent/CAPABILITIES.md](superagent/CAPABILITIES.md).
 
 ---
 
